@@ -25,6 +25,7 @@ import { CurrencyInput } from "@/components/shared/currency-input";
 import { IconRenderer } from "@/components/shared/icon-renderer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { formatCurrency, WALLET_TYPES } from "@/lib/constants";
+import { CardListSkeleton } from "@/components/shared/skeleton-list";
 import { useWallets } from "@/hooks/use-wallets";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -36,7 +37,7 @@ const COLOR_OPTIONS = [
 ];
 
 export default function WalletsPage() {
-  const { wallets, totalBalance, addWallet, updateWallet, deleteWallet, refetch } = useWallets();
+  const { wallets, totalBalance, loading: walletsLoading, addWallet, updateWallet, deleteWallet, refetch } = useWallets();
   const [showForm, setShowForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
@@ -178,7 +179,9 @@ export default function WalletsPage() {
         </div>
       </div>
 
-      {wallets.length === 0 ? (
+      {walletsLoading && wallets.length === 0 ? (
+        <CardListSkeleton rows={3} />
+      ) : wallets.length === 0 ? (
         <EmptyState icon={WalletIcon} title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu">
           <Button onClick={openAdd}>
             <Plus className="h-4 w-4 mr-2" />

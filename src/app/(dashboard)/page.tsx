@@ -10,6 +10,7 @@ import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { ExpenseChart } from "@/components/dashboard/expense-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { BudgetAlerts } from "@/components/dashboard/budget-alerts";
+import { SummarySkeleton, ChartSkeleton } from "@/components/shared/skeleton-list";
 import { TransactionForm } from "@/components/transactions/transaction-form";
 import { useTransactions } from "@/hooks/use-transactions";
 import { useCategories } from "@/hooks/use-categories";
@@ -27,7 +28,7 @@ export default function DashboardPage() {
   const [showForm, setShowForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
 
-  const { transactions, addTransaction, refetch } = useTransactions({ startDate, endDate });
+  const { transactions, loading: txLoading, addTransaction, refetch } = useTransactions({ startDate, endDate });
   const { categories } = useCategories();
   const { wallets, refetch: refetchWallets } = useWallets();
 
@@ -71,18 +72,30 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      <SummaryCards
-        totalIncome={totalIncome}
-        totalExpense={totalExpense}
-        balance={totalIncome - totalExpense}
-      />
+      {txLoading && transactions.length === 0 ? (
+        <>
+          <SummarySkeleton />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartSkeleton />
+            <ChartSkeleton />
+          </div>
+        </>
+      ) : (
+        <>
+          <SummaryCards
+            totalIncome={totalIncome}
+            totalExpense={totalExpense}
+            balance={totalIncome - totalExpense}
+          />
 
-      <BudgetAlerts />
+          <BudgetAlerts />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ExpenseChart transactions={transactions} />
-        <RecentTransactions transactions={transactions} />
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ExpenseChart transactions={transactions} />
+            <RecentTransactions transactions={transactions} />
+          </div>
+        </>
+      )}
 
       {/* FAB for mobile */}
       <Button

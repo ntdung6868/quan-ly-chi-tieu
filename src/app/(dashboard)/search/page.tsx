@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, X, ArrowLeftRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { TransactionListSkeleton } from "@/components/shared/skeleton-list";
 import { TransactionCard } from "@/components/transactions/transaction-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { createClient } from "@/lib/supabase/client";
@@ -116,7 +117,7 @@ export default function SearchPage() {
       )}
 
       {loading && !results.length ? (
-        <div className="text-center py-12 text-muted-foreground">Đang tìm...</div>
+        <TransactionListSkeleton rows={3} />
       ) : searched && results.length === 0 ? (
         <EmptyState
           icon={ArrowLeftRight}

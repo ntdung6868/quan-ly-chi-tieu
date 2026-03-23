@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { IconRenderer } from "@/components/shared/icon-renderer";
 import { EmptyState } from "@/components/shared/empty-state";
+import { CardListSkeleton } from "@/components/shared/skeleton-list";
 import { useCategories } from "@/hooks/use-categories";
 import { toast } from "sonner";
 import type { Category, TransactionType } from "@/types";
@@ -43,7 +44,7 @@ const COLOR_OPTIONS = [
 ];
 
 export default function CategoriesPage() {
-  const { categories, addCategory, updateCategory, deleteCategory } = useCategories();
+  const { categories, loading: catsLoading, addCategory, updateCategory, deleteCategory } = useCategories();
   const [showForm, setShowForm] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
   const [deletingCat, setDeletingCat] = useState<Category | null>(null);
@@ -96,6 +97,9 @@ export default function CategoriesPage() {
   }
 
   function renderCategoryList(cats: Category[], type: TransactionType) {
+    if (catsLoading && cats.length === 0) {
+      return <CardListSkeleton rows={4} />;
+    }
     if (cats.length === 0) {
       return (
         <EmptyState icon={Tag} title="Chưa có danh mục" description="Tạo danh mục đầu tiên">
