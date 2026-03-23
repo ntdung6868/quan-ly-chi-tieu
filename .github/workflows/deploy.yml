@@ -40,7 +40,7 @@ jobs:
         with:
           host: ${{ secrets.A2_HOST }}
           username: ${{ secrets.A2_USER }}
-          key: ${{ secrets.A2_SSH_KEY }}
+          password: ${{ secrets.A2_PASSWORD }}
           port: ${{ secrets.A2_PORT }}
           source: "deploy/*"
           target: "~/chitieu.ntdungdev.id.vn"
@@ -52,9 +52,8 @@ jobs:
         with:
           host: ${{ secrets.A2_HOST }}
           username: ${{ secrets.A2_USER }}
-          key: ${{ secrets.A2_SSH_KEY }}
+          password: ${{ secrets.A2_PASSWORD }}
           port: ${{ secrets.A2_PORT }}
           script: |
-            source /home/${{ secrets.A2_USER }}/nodevenv/chitieu.ntdungdev.id.vn/20/bin/activate
             cd ~/chitieu.ntdungdev.id.vn
             touch tmp/restart.txt
