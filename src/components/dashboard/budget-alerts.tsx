@@ -10,8 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useBudgets } from "@/hooks/use-budgets";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfYear, endOfYear } from "date-fns";
 import Link from "next/link";
+import type { BudgetPeriod } from "@/types";
 
 interface BudgetAlert {
   id: string;
@@ -22,6 +23,20 @@ interface BudgetAlert {
   spent: number;
   percent: number;
   isOver: boolean;
+}
+
+function getPeriodRange(period: BudgetPeriod, monthStartDay: number): { start: string; end: string } {
+  const now = new Date();
+  switch (period) {
+    case "weekly":
+      return { start: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"), end: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd") };
+    case "monthly": {
+      const r = getMonthRange(now, monthStartDay);
+      return { start: format(r.start, "yyyy-MM-dd"), end: format(r.end, "yyyy-MM-dd") };
+    }
+    case "yearly":
+      return { start: format(startOfYear(now), "yyyy-MM-dd"), end: format(endOfYear(now), "yyyy-MM-dd") };
+  }
 }
 
 export function BudgetAlerts() {
@@ -35,24 +50,40 @@ export function BudgetAlerts() {
       if (budgets.length === 0) return;
 
       const monthStartDay = profile?.month_start_day ?? 1;
-      const range = getMonthRange(new Date(), monthStartDay);
-      const start = format(range.start, "yyyy-MM-dd");
-      const end = format(range.end, "yyyy-MM-dd");
+
+      // Collect all category IDs and find the widest date range needed
+      const categoryIds = budgets.map((b) => b.category_id);
+      let minStart = "9999-12-31";
+      let maxEnd = "0000-01-01";
+      const budgetRanges = new Map<string, { start: string; end: string }>();
+
+      for (const budget of budgets) {
+        const range = getPeriodRange(budget.period, monthStartDay);
+        budgetRanges.set(budget.id, range);
+        if (range.start < minStart) minStart = range.start;
+        if (range.end > maxEnd) maxEnd = range.end;
+      }
+
+      // Single batch query for all categories in widest range
+      const { data: allTxs } = await supabaseRef.current
+        .from("transactions")
+        .select("category_id, amount, transaction_date")
+        .eq("type", "expense")
+        .in("category_id", categoryIds)
+        .gte("transaction_date", minStart)
+        .lte("transaction_date", maxEnd);
+
+      const txs = allTxs ?? [];
 
       const results: BudgetAlert[] = [];
 
       for (const budget of budgets) {
-        if (budget.period !== "monthly") continue;
+        const range = budgetRanges.get(budget.id)!;
+        // Filter transactions for this budget's category and date range
+        const spent = txs
+          .filter((t: { category_id: string; amount: number; transaction_date: string }) => t.category_id === budget.category_id && t.transaction_date >= range.start && t.transaction_date <= range.end)
+          .reduce((s: number, t: { amount: number }) => s + t.amount, 0);
 
-        const { data } = await supabaseRef.current
-          .from("transactions")
-          .select("amount")
-          .eq("category_id", budget.category_id)
-          .eq("type", "expense")
-          .gte("transaction_date", start)
-          .lte("transaction_date", end);
-
-        const spent = (data ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0);
         const percent = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
 
         if (percent >= 80) {

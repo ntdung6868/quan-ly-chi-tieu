@@ -313,7 +313,7 @@ export default function SettingsPage() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm">
-              Nhập <span className="font-semibold text-destructive">xoa tai khoan</span> để xác nhận:
+              Nhập <span className="font-semibold text-destructive">xoa tai khoan</span> hoặc <span className="font-semibold text-destructive">xóa tài khoản</span> để xác nhận:
             </p>
             <Input
               value={deleteConfirmText}
@@ -327,7 +327,7 @@ export default function SettingsPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={deleteConfirmText !== "xoa tai khoan" || deletingAccount}
+              disabled={!["xoa tai khoan", "xóa tài khoản"].includes(deleteConfirmText.trim().toLowerCase()) || deletingAccount}
               onClick={handleDeleteAccount}
             >
               {deletingAccount ? "Đang xoá..." : "Xoá tài khoản"}

@@ -108,30 +108,50 @@ export default function WalletsPage() {
     if (!transfer.from || !transfer.to || !transfer.amount || transfer.from === transfer.to) return;
 
     try {
-      const supabase = createClient();
-
       const fromWallet = wallets.find((w) => w.id === transfer.from);
       const toWallet = wallets.find((w) => w.id === transfer.to);
       if (!fromWallet || !toWallet) return;
 
-      const { error: e1 } = await supabase
-        .from("wallets")
-        .update({ balance: fromWallet.balance - transfer.amount })
-        .eq("id", transfer.from);
-
-      const { error: e2 } = await supabase
-        .from("wallets")
-        .update({ balance: toWallet.balance + transfer.amount })
-        .eq("id", transfer.to);
-
-      if (e1 || e2) {
-        toast.error("Chuyển tiền thất bại", { description: (e1 || e2)?.message });
-      } else {
-        toast.success(`Đã chuyển ${formatCurrency(transfer.amount)}`);
-        setShowTransfer(false);
-        setTransfer({ from: "", to: "", amount: 0 });
-        refetch();
+      if (fromWallet.balance < transfer.amount) {
+        toast.error("Số dư không đủ", {
+          description: `Ví "${fromWallet.name}" chỉ còn ${formatCurrency(fromWallet.balance)}`,
+        });
+        return;
       }
+
+      const supabase = createClient();
+      // Use RPC for atomic transfer (both updates in one transaction)
+      const { error } = await supabase.rpc("transfer_between_wallets", {
+        from_wallet_id: transfer.from,
+        to_wallet_id: transfer.to,
+        transfer_amount: transfer.amount,
+      });
+
+      if (error) {
+        // Fallback to sequential updates if RPC not available
+        if (error.message?.includes("function") || error.code === "42883") {
+          const { error: e1 } = await supabase
+            .from("wallets")
+            .update({ balance: fromWallet.balance - transfer.amount })
+            .eq("id", transfer.from);
+          const { error: e2 } = await supabase
+            .from("wallets")
+            .update({ balance: toWallet.balance + transfer.amount })
+            .eq("id", transfer.to);
+          if (e1 || e2) {
+            toast.error("Chuyển tiền thất bại", { description: (e1 || e2)?.message });
+            return;
+          }
+        } else {
+          toast.error("Chuyển tiền thất bại", { description: error.message });
+          return;
+        }
+      }
+
+      toast.success(`Đã chuyển ${formatCurrency(transfer.amount)}`);
+      setShowTransfer(false);
+      setTransfer({ from: "", to: "", amount: 0 });
+      refetch();
     } catch (err) {
       toast.error("Lỗi không xác định", { description: String(err) });
     }

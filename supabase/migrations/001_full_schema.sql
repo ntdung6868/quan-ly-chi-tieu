@@ -273,6 +273,28 @@ CREATE TRIGGER on_transaction_change
   AFTER INSERT OR UPDATE OR DELETE ON transactions
   FOR EACH ROW EXECUTE FUNCTION public.update_wallet_balance();
 
+-- Atomic wallet transfer (called via RPC)
+CREATE OR REPLACE FUNCTION public.transfer_between_wallets(
+  from_wallet_id UUID,
+  to_wallet_id UUID,
+  transfer_amount BIGINT
+)
+RETURNS void AS $$
+BEGIN
+  IF transfer_amount <= 0 THEN
+    RAISE EXCEPTION 'Transfer amount must be positive';
+  END IF;
+
+  -- Check balance
+  IF (SELECT balance FROM wallets WHERE id = from_wallet_id AND user_id = auth.uid()) < transfer_amount THEN
+    RAISE EXCEPTION 'Insufficient balance';
+  END IF;
+
+  UPDATE wallets SET balance = balance - transfer_amount WHERE id = from_wallet_id AND user_id = auth.uid();
+  UPDATE wallets SET balance = balance + transfer_amount WHERE id = to_wallet_id AND user_id = auth.uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Delete own account (called via RPC)
 CREATE OR REPLACE FUNCTION public.delete_own_account()
 RETURNS void AS $$
