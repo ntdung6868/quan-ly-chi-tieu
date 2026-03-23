@@ -12,48 +12,53 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npx next build
+      - name: Deploy source & build on server
+        uses: appleboy/ssh-action@v1.0.3
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
-      - name: Prepare deployment
-        run: |
-          mkdir -p deploy/.next/standalone/.next/static
-          cp -r .next/standalone/* deploy/.next/standalone/
-          cp -r .next/static/* deploy/.next/standalone/.next/static/
-          cp -r public deploy/.next/standalone/public
-          cp server.js deploy/server.js
-
-      - name: Deploy via SSH
-        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.A2_HOST }}
           username: ${{ secrets.A2_USER }}
           password: ${{ secrets.A2_PASSWORD }}
           port: ${{ secrets.A2_PORT }}
-          source: "deploy/*"
-          target: "~/chitieu.ntdungdev.id.vn"
-          strip_components: 1
-          overwrite: true
-
-      - name: Restart app
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.A2_HOST }}
-          username: ${{ secrets.A2_USER }}
-          password: ${{ secrets.A2_PASSWORD }}
-          port: ${{ secrets.A2_PORT }}
+          envs: NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY
+          command_timeout: 15m
           script: |
-            cd ~/chitieu.ntdungdev.id.vn
+            set -e
+            APP_DIR=~/chitieu.ntdungdev.id.vn
+            REPO_URL=https://github.com/ntdung6868/quan-ly-chi-tieu.git
+
+            # Clone/pull source
+            if [ -d "$APP_DIR/repo" ]; then
+              cd $APP_DIR/repo && git pull origin main
+            else
+              git clone $REPO_URL $APP_DIR/repo
+            fi
+
+            cd $APP_DIR/repo
+
+            # Use node from nodevenv
+            source /home/${{ secrets.A2_USER }}/nodevenv/chitieu.ntdungdev.id.vn/22/bin/activate
+
+            # Install & build
+            npm ci --production=false
+            NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            npx next build
+
+            # Deploy standalone to app root
+            rm -rf $APP_DIR/.next $APP_DIR/node_modules $APP_DIR/public $APP_DIR/package.json $APP_DIR/server.next.js
+            cp -r .next/standalone/* $APP_DIR/
+            # Rename Next.js server.js so our server.js can wrap it
+            mv $APP_DIR/server.js $APP_DIR/server.next.js
+            mkdir -p $APP_DIR/.next/static
+            cp -r .next/static/* $APP_DIR/.next/static/
+            cp -r public $APP_DIR/public
+            cp server.js $APP_DIR/server.js
+
+            # Restart
+            cd $APP_DIR
             touch tmp/restart.txt
+
+            echo "Deploy complete!"
