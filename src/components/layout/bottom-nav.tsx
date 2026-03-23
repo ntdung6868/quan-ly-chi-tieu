@@ -35,8 +35,8 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 8px)" }}>
-      <div className="flex items-center justify-around h-14 pt-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm lg:hidden pb-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0.5rem))" }}>
+      <div className="flex items-center justify-around h-14">
         {navItems.map((item) => {
           const isActive = item.href === "/"
             ? activePath === "/"
