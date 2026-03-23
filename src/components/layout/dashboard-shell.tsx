@@ -1,47 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { createClient, getCachedUserId } from "@/lib/supabase/client";
+import { useState } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { BottomNav } from "@/components/layout/bottom-nav";
 
+// Server layout already checks auth — no need to recheck here.
+// Just render the shell immediately.
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [checked, setChecked] = useState(false);
-  const router = useRouter();
-
-  useEffect(() => {
-    const supabase = createClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event: string, session: { user?: { id: string } } | null) => {
-        if (session?.user) {
-          setChecked(true);
-        } else {
-          // Force full redirect to clear all client state
-          window.location.href = "/login";
-        }
-      }
-    );
-
-    // Fallback: if userId is already cached (listener fired before mount)
-    if (getCachedUserId()) {
-      setChecked(true);
-    }
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  if (!checked) {
-    return (
-      <div className="flex h-dvh items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-dvh">

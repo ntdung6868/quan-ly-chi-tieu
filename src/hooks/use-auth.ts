@@ -38,11 +38,8 @@ export function useAuth() {
         if (!ignore) setLoading(false);
 
         if (currentUser) {
-          // Defer the profile fetch out of the auth callback to avoid
-          // deadlocking the internal auth lock.
-          setTimeout(() => {
-            if (!ignore) fetchProfile(currentUser.id);
-          }, 0);
+          // Fetch profile immediately — fetchProfile uses its own async context
+          if (!ignore) fetchProfile(currentUser.id);
         } else {
           setProfile(null);
         }

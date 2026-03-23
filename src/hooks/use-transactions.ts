@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
 import type { Transaction, TransactionGroup } from "@/types";
 
@@ -191,25 +191,20 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
     }
   }
 
-  const grouped: TransactionGroup[] = transactions.reduce<TransactionGroup[]>(
-    (groups, tx) => {
-      const existing = groups.find((g) => g.date === tx.transaction_date);
-      if (existing) {
-        existing.transactions.push(tx);
-        if (tx.type === "income") existing.total_income += tx.amount;
-        else existing.total_expense += tx.amount;
-      } else {
-        groups.push({
-          date: tx.transaction_date,
-          transactions: [tx],
-          total_income: tx.type === "income" ? tx.amount : 0,
-          total_expense: tx.type === "expense" ? tx.amount : 0,
-        });
+  const grouped = useMemo(() => {
+    const map = new Map<string, TransactionGroup>();
+    for (const tx of transactions) {
+      let group = map.get(tx.transaction_date);
+      if (!group) {
+        group = { date: tx.transaction_date, transactions: [], total_income: 0, total_expense: 0 };
+        map.set(tx.transaction_date, group);
       }
-      return groups;
-    },
-    []
-  );
+      group.transactions.push(tx);
+      if (tx.type === "income") group.total_income += tx.amount;
+      else group.total_expense += tx.amount;
+    }
+    return Array.from(map.values());
+  }, [transactions]);
 
   return {
     transactions,
