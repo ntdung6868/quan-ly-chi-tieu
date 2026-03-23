@@ -100,7 +100,8 @@ export default function DashboardPage() {
       {/* FAB for mobile */}
       <Button
         onClick={() => setShowForm(true)}
-        className="fixed bottom-20 right-4 h-14 w-14 rounded-full shadow-lg sm:hidden z-40"
+        className="fixed right-4 h-14 w-14 rounded-full shadow-lg sm:hidden z-40"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
         size="icon"
       >
         <Plus className="h-6 w-6" />

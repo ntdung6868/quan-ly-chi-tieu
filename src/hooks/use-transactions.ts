@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
+import { getCached, setCache } from "@/lib/cache";
 import type { Transaction, TransactionGroup } from "@/types";
 
 const PAGE_SIZE = 20;
@@ -18,8 +19,10 @@ interface UseTransactionsOptions {
 }
 
 export function useTransactions(options: UseTransactionsOptions = {}) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `txs:${options.startDate}:${options.endDate}:${options.type ?? ""}:${options.walletId ?? ""}:${options.search ?? ""}`;
+  const cached = getCached<Transaction[]>(cacheKey);
+  const [transactions, setTransactions] = useState<Transaction[]>(cached ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const supabaseRef = useRef(createClient());
@@ -42,7 +45,9 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
   }
 
   const fetchTransactions = useCallback(async () => {
-    setLoading(true);
+    const c = getCached<Transaction[]>(cacheKey);
+    if (!c) setLoading(true);
+
     try {
       let query = buildQuery();
       if (options.paginate) {
@@ -58,6 +63,7 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
       } else {
         const items = (data ?? []) as Transaction[];
         setTransactions(items);
+        setCache(cacheKey, items);
         if (options.paginate) {
           setHasMore(items.length >= PAGE_SIZE);
         }

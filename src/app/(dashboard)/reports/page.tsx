@@ -6,6 +6,7 @@ import { vi } from "date-fns/locale";
 import { Download } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { getCached, setCache } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -169,13 +170,17 @@ async function exportExcel(transactions: Transaction[], dateRange: { start: stri
 
 export default function ReportsPage() {
   const [preset, setPreset] = useState<DatePreset>("this_month");
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [yearTransactions, setYearTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `reports:${preset}`;
+  const cached = getCached<{ txs: Transaction[]; yearTxs: Transaction[] }>(cacheKey);
+  const [transactions, setTransactions] = useState<Transaction[]>(cached?.txs ?? []);
+  const [yearTransactions, setYearTransactions] = useState<Transaction[]>(cached?.yearTxs ?? []);
+  const [loading, setLoading] = useState(!cached);
 
   useEffect(() => {
     async function fetchData() {
-      setLoading(true);
+      const c = getCached<{ txs: Transaction[]; yearTxs: Transaction[] }>(`reports:${preset}`);
+      if (!c) setLoading(true);
+
       try {
         const supabase = createClient();
         const range = getDateRange(preset);
@@ -187,7 +192,8 @@ export default function ReportsPage() {
           .lte("transaction_date", range.end)
           .order("transaction_date", { ascending: false });
 
-        setTransactions((data ?? []) as Transaction[]);
+        const txs = (data ?? []) as Transaction[];
+        setTransactions(txs);
 
         const yearRange = getDateRange("this_year");
         const { data: yearData } = await supabase
@@ -197,7 +203,9 @@ export default function ReportsPage() {
           .lte("transaction_date", yearRange.end)
           .order("transaction_date", { ascending: false });
 
-        setYearTransactions((yearData ?? []) as Transaction[]);
+        const yearTxs = (yearData ?? []) as Transaction[];
+        setYearTransactions(yearTxs);
+        setCache(`reports:${preset}`, { txs, yearTxs });
       } catch (err) {
         console.error("Fetch report data error:", err);
       }
