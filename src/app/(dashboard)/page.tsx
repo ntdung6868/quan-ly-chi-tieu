@@ -101,7 +101,7 @@ export default function DashboardPage() {
       <Button
         onClick={() => setShowForm(true)}
         className="fixed right-4 h-14 w-14 rounded-full shadow-lg sm:hidden z-40"
-        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 7rem)" }}
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 6.8rem)" }}
         size="icon"
       >
         <Plus className="h-6 w-6" />
