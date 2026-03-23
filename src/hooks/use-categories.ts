@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
+import { getCached, setCache, invalidateCache } from "@/lib/cache";
 import type { Category, TransactionType } from "@/types";
 
 export function useCategories(type?: TransactionType) {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `categories:${type ?? "all"}`;
+  const [categories, setCategories] = useState<Category[]>(() => getCached<Category[]>(cacheKey) ?? []);
+  const [loading, setLoading] = useState(() => !getCached<Category[]>(cacheKey));
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
 
   const fetchCategories = useCallback(async () => {
-    setLoading(true);
+    // Skip loading state if we have cached data (show stale while revalidating)
+    const cached = getCached<Category[]>(cacheKey);
+    if (!cached) setLoading(true);
+
     try {
       let query = supabase
         .from("categories")
@@ -25,12 +30,13 @@ export function useCategories(type?: TransactionType) {
         console.error("Fetch categories error:", error.message);
       } else {
         setCategories(data ?? []);
+        setCache(cacheKey, data ?? []);
       }
     } catch (err) {
       console.error("Fetch categories exception:", err);
     }
     setLoading(false);
-  }, [supabase, type]);
+  }, [supabase, type, cacheKey]);
 
   useEffect(() => {
     fetchCategories();

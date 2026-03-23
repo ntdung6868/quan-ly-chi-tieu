@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
+import { getCached, setCache } from "@/lib/cache";
 import type { Wallet } from "@/types";
 
+const CACHE_KEY = "wallets";
+
 export function useWallets() {
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [wallets, setWallets] = useState<Wallet[]>(() => getCached<Wallet[]>(CACHE_KEY) ?? []);
+  const [loading, setLoading] = useState(() => !getCached<Wallet[]>(CACHE_KEY));
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
 
   const fetchWallets = useCallback(async () => {
-    setLoading(true);
+    const cached = getCached<Wallet[]>(CACHE_KEY);
+    if (!cached) setLoading(true);
+
     try {
       const { data, error } = await supabase
         .from("wallets")
@@ -22,6 +27,7 @@ export function useWallets() {
         console.error("Fetch wallets error:", error.message);
       } else {
         setWallets(data ?? []);
+        setCache(CACHE_KEY, data ?? []);
       }
     } catch (err) {
       console.error("Fetch wallets exception:", err);
