@@ -27,6 +27,7 @@ import {
 import { CurrencyInput } from "@/components/shared/currency-input";
 import { IconRenderer } from "@/components/shared/icon-renderer";
 import { EmptyState } from "@/components/shared/empty-state";
+import { CardListSkeleton } from "@/components/shared/skeleton-list";
 import { formatCurrency, getMonthRange } from "@/lib/constants";
 import { useBudgets } from "@/hooks/use-budgets";
 import { useCategories } from "@/hooks/use-categories";
@@ -68,7 +69,7 @@ function getPeriodDates(period: BudgetPeriod, monthStartDay: number = 1): { star
 export default function BudgetsPage() {
   const { profile } = useAuth();
   const monthStartDay = profile?.month_start_day ?? 1;
-  const { budgets, addBudget, updateBudget, deleteBudget, refetch } = useBudgets();
+  const { budgets, loading: budgetsLoading, addBudget, updateBudget, deleteBudget, refetch } = useBudgets();
   const { categories } = useCategories("expense");
   const [showForm, setShowForm] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -173,7 +174,9 @@ export default function BudgetsPage() {
         </Button>
       </div>
 
-      {budgets.length === 0 ? (
+      {budgetsLoading ? (
+        <CardListSkeleton rows={4} />
+      ) : budgets.length === 0 ? (
         <EmptyState
           icon={Target}
           title="Chưa có ngân sách"

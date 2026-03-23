@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient, getCachedUserId } from "@/lib/supabase/client";
+import { getCached, setCache } from "@/lib/cache";
 import type { Budget } from "@/types";
 
+const CACHE_KEY = "budgets";
+
 export function useBudgets() {
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [budgets, setBudgets] = useState<Budget[]>(() => getCached<Budget[]>(CACHE_KEY) ?? []);
+  const [loading, setLoading] = useState(() => !getCached<Budget[]>(CACHE_KEY));
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
 
   const fetchBudgets = useCallback(async () => {
-    setLoading(true);
+    const cached = getCached<Budget[]>(CACHE_KEY);
+    if (!cached) setLoading(true);
+
     try {
       const { data, error } = await supabase
         .from("budgets")
@@ -22,6 +27,7 @@ export function useBudgets() {
         console.error("Fetch budgets error:", error.message);
       } else {
         setBudgets((data ?? []) as Budget[]);
+        setCache(CACHE_KEY, (data ?? []) as Budget[]);
       }
     } catch (err) {
       console.error("Fetch budgets exception:", err);

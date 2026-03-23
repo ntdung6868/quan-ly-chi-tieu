@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getCached, setCache } from "@/lib/cache";
 import type { User, AuthChangeEvent, Session } from "@supabase/supabase-js";
 import type { Profile } from "@/types";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => getCached<Profile>("profile"));
   const [loading, setLoading] = useState(true);
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
@@ -22,7 +23,10 @@ export function useAuth() {
           .select("*")
           .eq("id", userId)
           .single();
-        if (!ignore) setProfile(data);
+        if (!ignore) {
+          setProfile(data);
+          if (data) setCache("profile", data);
+        }
       } catch (err) {
         console.error("Fetch profile error:", err);
       }
