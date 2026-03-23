@@ -7,7 +7,14 @@
       "Bash(ipconfig getifaddr:*)",
       "Read(//Users/dungdev/Desktop/chi-tieu/**)",
       "Bash(kill 62873)",
-      "Bash(zip -r deploy.zip .next/standalone/ .next/static/ public/ .env.local package.json -x \"*.DS_Store\")"
+      "Bash(zip -r deploy.zip .next/standalone/ .next/static/ public/ .env.local package.json -x \"*.DS_Store\")",
+      "Read(//Users/dungdev/.ssh/**)",
+      "Bash(gh auth:*)",
+      "Bash(git status:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

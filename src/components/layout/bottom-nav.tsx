@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -21,18 +21,30 @@ const navItems = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  function handleNav(href: string) {
+    setPendingHref(href);
+    router.push(href);
+  }
+
+  const activePath = pendingHref ?? pathname;
+  if (pendingHref && pathname === pendingHref) {
+    queueMicrotask(() => setPendingHref(null));
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm lg:hidden safe-bottom">
       <div className="flex items-center justify-around h-16">
         {navItems.map((item) => {
           const isActive = item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href);
+            ? activePath === "/"
+            : activePath.startsWith(item.href);
           return (
-            <Link
+            <button
               key={item.href}
-              href={item.href}
+              onClick={() => handleNav(item.href)}
               className={cn(
                 "flex flex-col items-center gap-0.5 px-3 py-1.5 text-xs transition-colors",
                 isActive
@@ -42,7 +54,7 @@ export function BottomNav() {
             >
               <item.icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
               <span>{item.label}</span>
-            </Link>
+            </button>
           );
         })}
       </div>
