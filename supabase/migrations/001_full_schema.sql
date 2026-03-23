@@ -1,42 +1,30 @@
 -- ============================================
 -- Chi Tiêu - Full Database Schema
--- An toàn khi chạy lại (IF NOT EXISTS / CREATE OR REPLACE)
--- Không xoá data hiện có
+-- An toàn chạy trên DB mới hoặc DB đã có data
+-- Dùng IF NOT EXISTS / CREATE OR REPLACE xuyên suốt
 -- ============================================
 
 -- ============================================
--- PROFILES TABLE (extends Supabase auth.users)
+-- 1. TABLES
 -- ============================================
+
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT,
   avatar_url TEXT,
   currency TEXT DEFAULT 'VND',
-  month_start_day INTEGER DEFAULT 1 CHECK (month_start_day >= 1 AND month_start_day <= 28),
+  month_start_day INTEGER DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
+-- Thêm cột mới nếu chưa có (cho DB cũ)
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can view own profile') THEN
-    CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can update own profile') THEN
-    CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can insert own profile') THEN
-    CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'month_start_day') THEN
+    ALTER TABLE profiles ADD COLUMN month_start_day INTEGER DEFAULT 1;
   END IF;
 END $$;
 
--- Add month_start_day if missing (for existing DBs)
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS month_start_day INTEGER DEFAULT 1 CHECK (month_start_day >= 1 AND month_start_day <= 28);
-
--- ============================================
--- WALLETS TABLE
--- ============================================
 CREATE TABLE IF NOT EXISTS wallets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -49,26 +37,6 @@ CREATE TABLE IF NOT EXISTS wallets (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can view own wallets') THEN
-    CREATE POLICY "Users can view own wallets" ON wallets FOR SELECT USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can insert own wallets') THEN
-    CREATE POLICY "Users can insert own wallets" ON wallets FOR INSERT WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can update own wallets') THEN
-    CREATE POLICY "Users can update own wallets" ON wallets FOR UPDATE USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can delete own wallets') THEN
-    CREATE POLICY "Users can delete own wallets" ON wallets FOR DELETE USING (auth.uid() = user_id);
-  END IF;
-END $$;
-
--- ============================================
--- CATEGORIES TABLE
--- ============================================
 CREATE TABLE IF NOT EXISTS categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -81,26 +49,6 @@ CREATE TABLE IF NOT EXISTS categories (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can view own categories') THEN
-    CREATE POLICY "Users can view own categories" ON categories FOR SELECT USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can insert own categories') THEN
-    CREATE POLICY "Users can insert own categories" ON categories FOR INSERT WITH CHECK (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can update own categories') THEN
-    CREATE POLICY "Users can update own categories" ON categories FOR UPDATE USING (auth.uid() = user_id);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can delete own categories') THEN
-    CREATE POLICY "Users can delete own categories" ON categories FOR DELETE USING (auth.uid() = user_id);
-  END IF;
-END $$;
-
--- ============================================
--- TRANSACTIONS TABLE
--- ============================================
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -115,9 +63,68 @@ CREATE TABLE IF NOT EXISTS transactions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS budgets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  amount BIGINT NOT NULL CHECK (amount > 0),
+  period TEXT NOT NULL CHECK (period IN ('monthly', 'weekly', 'yearly')),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-- 2. ROW LEVEL SECURITY
+-- ============================================
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
+  -- profiles
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can view own profile') THEN
+    CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can update own profile') THEN
+    CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can insert own profile') THEN
+    CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+  END IF;
+
+  -- wallets
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can view own wallets') THEN
+    CREATE POLICY "Users can view own wallets" ON wallets FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can insert own wallets') THEN
+    CREATE POLICY "Users can insert own wallets" ON wallets FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can update own wallets') THEN
+    CREATE POLICY "Users can update own wallets" ON wallets FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wallets' AND policyname = 'Users can delete own wallets') THEN
+    CREATE POLICY "Users can delete own wallets" ON wallets FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+
+  -- categories
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can view own categories') THEN
+    CREATE POLICY "Users can view own categories" ON categories FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can insert own categories') THEN
+    CREATE POLICY "Users can insert own categories" ON categories FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can update own categories') THEN
+    CREATE POLICY "Users can update own categories" ON categories FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'categories' AND policyname = 'Users can delete own categories') THEN
+    CREATE POLICY "Users can delete own categories" ON categories FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+
+  -- transactions
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can view own transactions') THEN
     CREATE POLICY "Users can view own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
   END IF;
@@ -130,25 +137,8 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'transactions' AND policyname = 'Users can delete own transactions') THEN
     CREATE POLICY "Users can delete own transactions" ON transactions FOR DELETE USING (auth.uid() = user_id);
   END IF;
-END $$;
 
--- ============================================
--- BUDGETS TABLE
--- ============================================
-CREATE TABLE IF NOT EXISTS budgets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  amount BIGINT NOT NULL CHECK (amount > 0),
-  period TEXT NOT NULL CHECK (period IN ('monthly', 'weekly', 'yearly')),
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
-
-DO $$ BEGIN
+  -- budgets
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'budgets' AND policyname = 'Users can view own budgets') THEN
     CREATE POLICY "Users can view own budgets" ON budgets FOR SELECT USING (auth.uid() = user_id);
   END IF;
@@ -164,7 +154,7 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================
--- TRIGGERS & FUNCTIONS
+-- 3. FUNCTIONS & TRIGGERS
 -- ============================================
 
 -- Auto-create profile on signup
@@ -284,12 +274,9 @@ BEGIN
   IF transfer_amount <= 0 THEN
     RAISE EXCEPTION 'Transfer amount must be positive';
   END IF;
-
-  -- Check balance
   IF (SELECT balance FROM wallets WHERE id = from_wallet_id AND user_id = auth.uid()) < transfer_amount THEN
     RAISE EXCEPTION 'Insufficient balance';
   END IF;
-
   UPDATE wallets SET balance = balance - transfer_amount WHERE id = from_wallet_id AND user_id = auth.uid();
   UPDATE wallets SET balance = balance + transfer_amount WHERE id = to_wallet_id AND user_id = auth.uid();
 END;
@@ -305,8 +292,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================
--- INDEXES (IF NOT EXISTS)
+-- 4. INDEXES
 -- ============================================
+
 CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, transaction_date DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_wallet ON transactions(wallet_id);
