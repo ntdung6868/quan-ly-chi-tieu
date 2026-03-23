@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm uninstall:*)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)",
+      "Bash(ipconfig getifaddr:*)",
+      "Read(//Users/dungdev/Desktop/chi-tieu/**)",
+      "Bash(kill 62873)",
+      "Bash(zip -r deploy.zip .next/standalone/ .next/static/ public/ .env.local package.json -x \"*.DS_Store\")"
+    ]
+  }
+}
