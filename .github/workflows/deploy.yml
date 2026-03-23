@@ -29,12 +29,18 @@ jobs:
 
       - name: Prepare deployment
         run: |
-          mkdir -p deploy/.next/static
-          cp -r .next/standalone/* deploy/
-          mv deploy/server.js deploy/server.next.js
-          cp -r .next/static/* deploy/.next/static/
-          cp -r public deploy/public
-          cp server.js deploy/server.js
+          # Copy entire standalone output (includes .next/server, node_modules, server.js)
+          cp -r .next/standalone deploy_tmp
+          # Rename Next.js server.js
+          mv deploy_tmp/server.js deploy_tmp/server.next.js
+          # Add static files (not included in standalone)
+          cp -r .next/static deploy_tmp/.next/static
+          # Add public files
+          cp -r public deploy_tmp/public
+          # Add our custom server.js wrapper
+          cp server.js deploy_tmp/server.js
+          # Rename to deploy
+          mv deploy_tmp deploy
 
       - name: Deploy via rsync
         env:
