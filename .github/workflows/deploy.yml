@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.A2_SSH_KEY }}
           port: ${{ secrets.A2_PORT }}
           source: "deploy/*"
-          target: "~/chi-tieu"
+          target: "~/chitieu.ntdungdev.id.vn"
           strip_components: 1
           overwrite: true
 
@@ -55,6 +55,6 @@ jobs:
           key: ${{ secrets.A2_SSH_KEY }}
           port: ${{ secrets.A2_PORT }}
           script: |
-            source /home/${{ secrets.A2_USER }}/nodevenv/chi-tieu/20/bin/activate
-            cd ~/chi-tieu
+            source /home/${{ secrets.A2_USER }}/nodevenv/chitieu.ntdungdev.id.vn/20/bin/activate
+            cd ~/chitieu.ntdungdev.id.vn
             touch tmp/restart.txt
