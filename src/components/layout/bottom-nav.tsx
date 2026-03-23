@@ -35,8 +35,8 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm lg:hidden pb-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0.5rem))" }}>
-      <div className="flex items-center justify-around h-14">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card/95 backdrop-blur-sm lg:hidden" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}>
+      <div className="flex items-center justify-around py-2">
         {navItems.map((item) => {
           const isActive = item.href === "/"
             ? activePath === "/"
@@ -46,13 +46,13 @@ export function BottomNav() {
               key={item.href}
               onClick={() => handleNav(item.href)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-4 py-2 text-xs transition-colors min-w-14",
+                "flex flex-col items-center justify-center gap-1 px-4 py-2.5 text-[11px] transition-colors min-w-14 rounded-xl active:bg-accent",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground"
               )}
             >
-              <item.icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
+              <item.icon className={cn("h-6 w-6", isActive && "stroke-[2.5]")} />
               <span>{item.label}</span>
             </button>
           );
