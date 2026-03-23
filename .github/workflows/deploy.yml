@@ -37,11 +37,16 @@ jobs:
           cp server.js deploy/server.js
 
       - name: Deploy via rsync
+        env:
+          A2_PASSWORD: ${{ secrets.A2_PASSWORD }}
+          A2_USER: ${{ secrets.A2_USER }}
+          A2_HOST: ${{ secrets.A2_HOST }}
+          A2_PORT: ${{ secrets.A2_PORT }}
         run: |
-          sudo apt-get install -y sshpass
-          sshpass -p "${{ secrets.A2_PASSWORD }}" rsync -avz --delete \
-            -e "ssh -p ${{ secrets.A2_PORT }} -o StrictHostKeyChecking=no" \
-            deploy/ ${{ secrets.A2_USER }}@${{ secrets.A2_HOST }}:~/chitieu.ntdungdev.id.vn/
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass > /dev/null 2>&1
+          sshpass -p "$A2_PASSWORD" rsync -avz --delete \
+            -e "ssh -p $A2_PORT -o StrictHostKeyChecking=no" \
+            deploy/ "${A2_USER}@${A2_HOST}:~/chitieu.ntdungdev.id.vn/"
 
       - name: Restart app
         uses: appleboy/ssh-action@v1.0.3
