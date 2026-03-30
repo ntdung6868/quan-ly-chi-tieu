@@ -1,12 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClient, getCachedUserId } from "@/lib/supabase/client";
-import { getCached, setCache } from "@/lib/cache";
+import { useMemo } from "react";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
+import {
+  fetchTransactions,
+  fetchTransactionPage,
+} from "@/lib/services/transaction.service";
+import type { TransactionFilters } from "@/lib/services/transaction.service";
+import type { CreateTransactionInput } from "@/lib/validations/transaction";
+import {
+  addTransactionAction,
+  updateTransactionAction,
+  deleteTransactionAction,
+} from "@/lib/actions/transaction.actions";
+import { queryKeys, invalidateAfterTransactionChange } from "@/lib/query-keys";
 import type { Transaction, TransactionGroup } from "@/types";
 
-const PAGE_SIZE = 20;
-
+// ─── Options interface ──────────────────────────────────────────
 interface UseTransactionsOptions {
   walletId?: string;
   categoryId?: string;
@@ -18,210 +33,152 @@ interface UseTransactionsOptions {
   paginate?: boolean;
 }
 
-export function useTransactions(options: UseTransactionsOptions = {}) {
-  const cacheKey = `txs:${options.startDate}:${options.endDate}:${options.type ?? ""}:${options.walletId ?? ""}:${options.search ?? ""}`;
-  const cached = getCached<Transaction[]>(cacheKey);
-  const [transactions, setTransactions] = useState<Transaction[]>(cached ?? []);
-  const [loading, setLoading] = useState(!cached);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const supabaseRef = useRef(createClient());
-  const supabase = supabaseRef.current;
-
-  function buildQuery() {
-    let query = supabase
-      .from("transactions")
-      .select("*, category:categories(*), wallet:wallets(*)")
-      .order("transaction_date", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    if (options.walletId) query = query.eq("wallet_id", options.walletId);
-    if (options.categoryId) query = query.eq("category_id", options.categoryId);
-    if (options.type) query = query.eq("type", options.type);
-    if (options.startDate) query = query.gte("transaction_date", options.startDate);
-    if (options.endDate) query = query.lte("transaction_date", options.endDate);
-    if (options.search) query = query.ilike("note", `%${options.search}%`);
-    return query;
+// ─── Helper: group transactions by date ─────────────────────────
+function groupByDate(transactions: Transaction[]): TransactionGroup[] {
+  const map = new Map<string, TransactionGroup>();
+  for (const tx of transactions) {
+    let group = map.get(tx.transaction_date);
+    if (!group) {
+      group = { date: tx.transaction_date, transactions: [], total_income: 0, total_expense: 0 };
+      map.set(tx.transaction_date, group);
+    }
+    group.transactions.push(tx);
+    if (tx.type === "income") group.total_income += tx.amount;
+    else group.total_expense += tx.amount;
   }
+  return Array.from(map.values());
+}
 
-  const fetchTransactions = useCallback(async () => {
-    const c = getCached<Transaction[]>(cacheKey);
-    if (!c) setLoading(true);
+// ─── Main hook ──────────────────────────────────────────────────
+export function useTransactions(options: UseTransactionsOptions = {}) {
+  const queryClient = useQueryClient();
 
-    try {
-      let query = buildQuery();
-      if (options.paginate) {
-        query = query.range(0, PAGE_SIZE - 1);
-      } else if (options.limit) {
-        query = query.limit(options.limit);
-      }
+  const filters: TransactionFilters = {
+    walletId: options.walletId,
+    categoryId: options.categoryId,
+    type: options.type,
+    startDate: options.startDate,
+    endDate: options.endDate,
+    search: options.search,
+  };
 
-      const { data, error } = await query;
+  // ── Queries (đọc — vẫn dùng client service, data đã prefetch từ server) ──
+  const simpleQuery = useQuery({
+    queryKey: queryKeys.transactions.list(filters),
+    queryFn: () => fetchTransactions(filters, { limit: options.limit }),
+    enabled: !options.paginate,
+  });
 
-      if (error) {
-        console.error("Fetch transactions error:", error.message);
-      } else {
-        const items = (data ?? []) as Transaction[];
-        setTransactions(items);
-        setCache(cacheKey, items);
-        if (options.paginate) {
-          setHasMore(items.length >= PAGE_SIZE);
+  const infiniteQuery = useInfiniteQuery({
+    queryKey: queryKeys.transactions.paginated(filters),
+    queryFn: ({ pageParam = 0 }) => fetchTransactionPage(filters, pageParam),
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((sum, p) => sum + p.data.length, 0) : undefined,
+    initialPageParam: 0,
+    enabled: !!options.paginate,
+  });
+
+  const transactions = options.paginate
+    ? infiniteQuery.data?.pages.flatMap((p) => p.data) ?? []
+    : simpleQuery.data ?? [];
+
+  const loading = options.paginate ? infiniteQuery.isLoading : simpleQuery.isLoading;
+  const hasMore = options.paginate ? infiniteQuery.hasNextPage ?? false : false;
+  const loadingMore = infiniteQuery.isFetchingNextPage;
+
+  const grouped = useMemo(() => groupByDate(transactions), [transactions]);
+
+  // ── Mutations (ghi — gọi Server Actions, KHÔNG gọi Supabase từ client) ──
+
+  const addMutation = useMutation({
+    mutationFn: async (input: CreateTransactionInput) => {
+      const result = await addTransactionAction(input);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => {
+      invalidateAfterTransactionChange(queryClient);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, unknown> }) => {
+      const result = await updateTransactionAction(id, updates);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => {
+      invalidateAfterTransactionChange(queryClient);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteTransactionAction(id);
+      if (!result.success) throw new Error(result.error);
+    },
+    // Optimistic delete — xóa ngay khỏi UI trước khi server confirm
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.transactions.all });
+      const previousData = queryClient.getQueriesData({ queryKey: queryKeys.transactions.all });
+
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.transactions.lists() },
+        (old: Transaction[] | undefined) => old?.filter((t) => t.id !== id)
+      );
+
+      return { previousData };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previousData) {
+        for (const [key, data] of context.previousData) {
+          queryClient.setQueryData(key, data);
         }
       }
-    } catch (err) {
-      console.error("Fetch transactions exception:", err);
-    }
-    setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    supabase,
-    options.walletId,
-    options.categoryId,
-    options.type,
-    options.startDate,
-    options.endDate,
-    options.search,
-    options.limit,
-    options.paginate,
-  ]);
+    },
+    onSettled: () => {
+      invalidateAfterTransactionChange(queryClient);
+    },
+  });
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
-
-  async function loadMore() {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    try {
-      const from = transactions.length;
-      const to = from + PAGE_SIZE - 1;
-      const query = buildQuery().range(from, to);
-      const { data, error } = await query;
-
-      if (error) {
-        console.error("Load more error:", error.message);
-      } else {
-        const items = (data ?? []) as Transaction[];
-        setTransactions((prev) => [...prev, ...items]);
-        setHasMore(items.length >= PAGE_SIZE);
-      }
-    } catch (err) {
-      console.error("Load more exception:", err);
-    }
-    setLoadingMore(false);
-  }
-
-  function getUserId(): string | null {
-    return getCachedUserId();
-  }
-
-  async function addTransaction(tx: {
-    amount: number;
-    type: "income" | "expense";
-    category_id: string;
-    wallet_id: string;
-    note: string;
-    transaction_date: string;
-    attachment_url?: string | null;
-  }) {
-    try {
-      const userId = getUserId();
-      if (!userId) return { data: null, error: { message: "Not authenticated" } };
-
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert({ ...tx, user_id: userId })
-        .select("*, category:categories(*), wallet:wallets(*)")
-        .single();
-
-      if (error) {
-        console.error("Add transaction error:", error.message);
-      } else if (data) {
-        setTransactions((prev) => [data as Transaction, ...prev]);
-      }
-      return { data, error };
-    } catch (err) {
-      console.error("Add transaction exception:", err);
-      return { data: null, error: { message: String(err) } };
-    }
-  }
-
-  async function updateTransaction(
-    id: string,
-    updates: {
-      amount?: number;
-      type?: "income" | "expense";
-      category_id?: string;
-      wallet_id?: string;
-      note?: string;
-      transaction_date?: string;
-    }
-  ) {
-    try {
-      const { data, error } = await supabase
-        .from("transactions")
-        .update(updates)
-        .eq("id", id)
-        .select("*, category:categories(*), wallet:wallets(*)")
-        .single();
-
-      if (error) {
-        console.error("Update transaction error:", error.message);
-      } else if (data) {
-        setTransactions((prev) =>
-          prev.map((t) => (t.id === id ? (data as Transaction) : t))
-        );
-      }
-      return { data, error };
-    } catch (err) {
-      console.error("Update transaction exception:", err);
-      return { data: null, error: { message: String(err) } };
-    }
-  }
-
-  async function deleteTransaction(id: string) {
-    try {
-      const { error } = await supabase
-        .from("transactions")
-        .delete()
-        .eq("id", id);
-      if (error) {
-        console.error("Delete transaction error:", error.message);
-      } else {
-        setTransactions((prev) => prev.filter((t) => t.id !== id));
-      }
-      return { error };
-    } catch (err) {
-      console.error("Delete transaction exception:", err);
-      return { error: { message: String(err) } };
-    }
-  }
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, TransactionGroup>();
-    for (const tx of transactions) {
-      let group = map.get(tx.transaction_date);
-      if (!group) {
-        group = { date: tx.transaction_date, transactions: [], total_income: 0, total_expense: 0 };
-        map.set(tx.transaction_date, group);
-      }
-      group.transactions.push(tx);
-      if (tx.type === "income") group.total_income += tx.amount;
-      else group.total_expense += tx.amount;
-    }
-    return Array.from(map.values());
-  }, [transactions]);
-
+  // ── Return interface (compatible với code cũ) ─────────────────
   return {
     transactions,
     grouped,
     loading,
     loadingMore,
     hasMore,
-    loadMore,
-    addTransaction,
-    updateTransaction,
-    deleteTransaction,
-    refetch: fetchTransactions,
+    loadMore: () => infiniteQuery.fetchNextPage(),
+    addTransaction: async (input: CreateTransactionInput) => {
+      try {
+        const data = await addMutation.mutateAsync(input);
+        return { data, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    updateTransaction: async (id: string, updates: Record<string, unknown>) => {
+      try {
+        const data = await updateMutation.mutateAsync({ id, updates });
+        return { data, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    deleteTransaction: async (id: string) => {
+      try {
+        await deleteMutation.mutateAsync(id);
+        return { error: null };
+      } catch (err) {
+        return { error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    refetch: () => {
+      if (options.paginate) {
+        infiniteQuery.refetch();
+      } else {
+        simpleQuery.refetch();
+      }
+    },
   };
 }

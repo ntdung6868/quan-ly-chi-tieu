@@ -1,123 +1,103 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient, getCachedUserId } from "@/lib/supabase/client";
-import { getCached, setCache } from "@/lib/cache";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { fetchBudgets } from "@/lib/services/budget.service";
+import {
+  addBudgetAction,
+  updateBudgetAction,
+  deleteBudgetAction,
+} from "@/lib/actions/budget.actions";
+import type { CreateBudgetInput, UpdateBudgetInput } from "@/lib/validations/budget";
+import { queryKeys } from "@/lib/query-keys";
 import type { Budget } from "@/types";
 
-const CACHE_KEY = "budgets";
-
 export function useBudgets() {
-  const [budgets, setBudgets] = useState<Budget[]>(() => getCached<Budget[]>(CACHE_KEY) ?? []);
-  const [loading, setLoading] = useState(() => !getCached<Budget[]>(CACHE_KEY));
-  const supabaseRef = useRef(createClient());
-  const supabase = supabaseRef.current;
+  const queryClient = useQueryClient();
 
-  const fetchBudgets = useCallback(async () => {
-    const cached = getCached<Budget[]>(CACHE_KEY);
-    if (!cached) setLoading(true);
+  const { data: budgets = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.budgets.all,
+    queryFn: fetchBudgets,
+  });
 
-    try {
-      const { data, error } = await supabase
-        .from("budgets")
-        .select("*, category:categories(*)")
-        .order("created_at", { ascending: false });
+  const addMutation = useMutation({
+    mutationFn: async (input: CreateBudgetInput) => {
+      const result = await addBudgetAction(input);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.budgets.all });
+    },
+  });
 
-      if (error) {
-        console.error("Fetch budgets error:", error.message);
-      } else {
-        setBudgets((data ?? []) as Budget[]);
-        setCache(CACHE_KEY, (data ?? []) as Budget[]);
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: UpdateBudgetInput }) => {
+      const result = await updateBudgetAction(id, updates);
+      if (!result.success) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.budgets.all });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const result = await deleteBudgetAction(id);
+      if (!result.success) throw new Error(result.error);
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.budgets.all });
+      const previous = queryClient.getQueryData<Budget[]>(queryKeys.budgets.all);
+      queryClient.setQueryData(
+        queryKeys.budgets.all,
+        (old: Budget[] | undefined) => old?.filter((b) => b.id !== id)
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.budgets.all, context.previous);
       }
-    } catch (err) {
-      console.error("Fetch budgets exception:", err);
-    }
-    setLoading(false);
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchBudgets();
-  }, [fetchBudgets]);
-
-  function getUserId(): string | null {
-    return getCachedUserId();
-  }
-
-  async function addBudget(
-    budget: Pick<
-      Budget,
-      "category_id" | "amount" | "period" | "start_date" | "end_date"
-    >
-  ) {
-    try {
-      const userId = getUserId();
-      if (!userId) return { data: null, error: { message: "Not authenticated" } };
-
-      const { data, error } = await supabase
-        .from("budgets")
-        .insert({ ...budget, user_id: userId })
-        .select("*, category:categories(*)")
-        .single();
-
-      if (error) {
-        console.error("Add budget error:", error.message);
-      } else if (data) {
-        setBudgets((prev) => [data as Budget, ...prev]);
-      }
-      return { data, error };
-    } catch (err) {
-      console.error("Add budget exception:", err);
-      return { data: null, error: { message: String(err) } };
-    }
-  }
-
-  async function updateBudget(
-    id: string,
-    updates: Partial<Pick<Budget, "amount" | "period" | "start_date" | "end_date">>
-  ) {
-    try {
-      const { data, error } = await supabase
-        .from("budgets")
-        .update(updates)
-        .eq("id", id)
-        .select("*, category:categories(*)")
-        .single();
-
-      if (error) {
-        console.error("Update budget error:", error.message);
-      } else if (data) {
-        setBudgets((prev) =>
-          prev.map((b) => (b.id === id ? (data as Budget) : b))
-        );
-      }
-      return { data, error };
-    } catch (err) {
-      console.error("Update budget exception:", err);
-      return { data: null, error: { message: String(err) } };
-    }
-  }
-
-  async function deleteBudget(id: string) {
-    try {
-      const { error } = await supabase.from("budgets").delete().eq("id", id);
-      if (error) {
-        console.error("Delete budget error:", error.message);
-      } else {
-        setBudgets((prev) => prev.filter((b) => b.id !== id));
-      }
-      return { error };
-    } catch (err) {
-      console.error("Delete budget exception:", err);
-      return { error: { message: String(err) } };
-    }
-  }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.budgets.all });
+    },
+  });
 
   return {
     budgets,
     loading,
-    addBudget,
-    updateBudget,
-    deleteBudget,
-    refetch: fetchBudgets,
+    addBudget: async (input: CreateBudgetInput) => {
+      try {
+        const data = await addMutation.mutateAsync(input);
+        return { data, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    updateBudget: async (id: string, updates: UpdateBudgetInput) => {
+      try {
+        const data = await updateMutation.mutateAsync({ id, updates });
+        return { data, error: null };
+      } catch (err) {
+        return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    deleteBudget: async (id: string) => {
+      try {
+        await deleteMutation.mutateAsync(id);
+        return { error: null };
+      } catch (err) {
+        return { error: { message: err instanceof Error ? err.message : String(err) } };
+      }
+    },
+    refetch: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.budgets.all });
+    },
   };
 }
