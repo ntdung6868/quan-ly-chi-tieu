@@ -2,8 +2,9 @@
 
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { AnimatePresence, motion } from "framer-motion";
 import { formatCurrency } from "@/lib/constants";
-import { TransactionCard } from "./transaction-card";
+import { SwipeableTransactionCard } from "./swipeable-transaction-card";
 import type { Transaction, TransactionGroup } from "@/types";
 
 function formatGroupDate(dateStr: string): string {
@@ -22,9 +23,14 @@ function formatGroupDate(dateStr: string): string {
 interface TransactionListProps {
   groups: TransactionGroup[];
   onTransactionClick: (transaction: Transaction) => void;
+  onTransactionDelete?: (transaction: Transaction) => void;
 }
 
-export function TransactionList({ groups, onTransactionClick }: TransactionListProps) {
+export function TransactionList({
+  groups,
+  onTransactionClick,
+  onTransactionDelete,
+}: TransactionListProps) {
   return (
     <div className="space-y-4">
       {groups.map((group) => (
@@ -42,14 +48,30 @@ export function TransactionList({ groups, onTransactionClick }: TransactionListP
               )}
             </div>
           </div>
-          <div className="rounded-xl border bg-card divide-y">
-            {group.transactions.map((tx) => (
-              <TransactionCard
-                key={tx.id}
-                transaction={tx}
-                onClick={() => onTransactionClick(tx)}
-              />
-            ))}
+          <div className="rounded-xl border bg-card divide-y overflow-hidden">
+            <AnimatePresence mode="popLayout">
+              {group.transactions.map((tx) => (
+                <motion.div
+                  key={tx.id}
+                  layout
+                  exit={{
+                    height: 0,
+                    opacity: 0,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    transition: { duration: 0.2, ease: "easeIn" },
+                  }}
+                >
+                  <SwipeableTransactionCard
+                    transaction={tx}
+                    onClick={() => onTransactionClick(tx)}
+                    onDelete={() => onTransactionDelete?.(tx)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       ))}
